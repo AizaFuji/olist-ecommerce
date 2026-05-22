@@ -70,7 +70,8 @@ CREATE TABLE staging_order_payments        AS SELECT * FROM raw_order_payments;
 CREATE TABLE staging_order_reviews         AS SELECT * FROM raw_order_reviews; 
 CREATE TABLE staging_customers             AS SELECT * FROM raw_customers; 
 CREATE TABLE staging_sellers               AS SELECT * FROM raw_sellers; 
-CREATE TABLE staging_products              AS SELECT * FROM raw_products; 
+CREATE TABLE staging_products              AS SELECT * FROM raw_products;
+CREATE TABLE staging_geolocation           AS SELECT * FROM raw_geolocation;
 
 -- Verifikasi jumlah baris identik 
 WITH counts AS (
@@ -171,78 +172,123 @@ SET
     total_item_value = price_num + freight_value_num;
 
 -- ═══════════════════════════════════════════════════════ 
--- BAGIAN F: BUAT TABEL ANALISA UTAMA  
+-- BAGIAN F: Cleaning staging_geolocation
+-- ═══════════════════════════════════════════════════════ 
+ALTER TABLE staging_geolocation
+ALTER COLUMN geolocation_lat TYPE DOUBLE PRECISION
+USING geolocation_lat::DOUBLE PRECISION,
+
+ALTER COLUMN geolocation_lng TYPE DOUBLE PRECISION
+USING geolocation_lng::DOUBLE PRECISION;
+
+-- ═══════════════════════════════════════════════════════ 
+-- BAGIAN G: BUAT TABEL ANALISA UTAMA  
 -- ═══════════════════════════════════════════════════════ 
   
 DROP TABLE IF EXISTS clean_orders_master; 
 
-CREATE TABLE clean_orders_master AS 
-SELECT 
-    -- Identifiers 
-    o.order_id, 
-    o.customer_id, 
-    c.customer_unique_id, 
-    c.customer_city, 
-    c.customer_state, 
-  
-    -- Order info 
-    o.order_status, 
-    o.purchase_ts                              AS order_date, 
-    DATE_TRUNC('month', o.purchase_ts)         AS order_month, 
-    EXTRACT(YEAR  FROM o.purchase_ts)          AS order_year, 
-    EXTRACT(MONTH FROM o.purchase_ts)          AS order_month_num, 
-    TO_CHAR(o.purchase_ts, 'YYYY-MM')          AS year_month, 
-  
-    -- Product info 
-    i.product_id, 
-    p.category_english                         AS product_category, 
-    i.order_item_id_int                        AS item_sequence, 
-  
-    -- Financials 
-    i.price_num                                AS item_price, 
-    i.freight_value_num                        AS freight_value, 
-    i.total_item_value, 
-  
-    -- Payment 
-    pay.payment_type, 
-    pay.payment_value::NUMERIC(12,2)           AS payment_value, 
-    pay.payment_installments::INTEGER          AS installments, 
-  
-    -- Delivery performance 
-    o.estimated_ts                             AS estimated_delivery, 
-    o.delivered_ts                             AS actual_delivery, 
-    CASE 
-        WHEN o.delivered_ts IS NOT NULL AND o.purchase_ts IS NOT NULL 
-        THEN EXTRACT(DAY FROM o.delivered_ts - o.purchase_ts) 
-        ELSE NULL 
-    END                                        AS delivery_days, 
-    CASE 
-        WHEN o.delivered_ts > o.estimated_ts THEN 'Late' 
-        WHEN o.delivered_ts <= o.estimated_ts THEN 'On Time' 
-        ELSE 'Not Yet Delivered' 
-    END                                        AS delivery_status, 
-  
-    -- Review 
-    r.review_score::INTEGER                    AS review_score, 
-  
-    -- Seller 
-    i.seller_id, 
-    s.seller_state 
-  
-FROM staging_orders o 
-LEFT JOIN staging_order_items  i   ON o.order_id  = i.order_id 
-LEFT JOIN staging_products     p   ON i.product_id = p.product_id 
-LEFT JOIN staging_customers    c   ON o.customer_id = c.customer_id 
-LEFT JOIN staging_sellers      s   ON i.seller_id   = s.seller_id 
-LEFT JOIN raw_order_payments   pay ON o.order_id    = pay.order_id 
-                                   AND pay.payment_sequential = '1' 
-LEFT JOIN staging_order_reviews r  ON o.order_id   = r.order_id; 
 
+CREATE TABLE clean_orders_master AS
+SELECT 
+    -- Identifiers
+    o.order_id,
+    o.customer_id,
+    c.customer_unique_id,
+    c.customer_city,
+    c.customer_state,
+    c.customer_zip_code_prefix,
+
+    -- Order info
+    o.order_status,
+
+    o.purchase_ts AS order_date,
+
+    DATE_TRUNC('month', o.purchase_ts) AS order_month,
+
+    CAST(EXTRACT(YEAR FROM o.purchase_ts) AS INTEGER) AS order_year,
+
+    CAST(EXTRACT(MONTH FROM o.purchase_ts) AS INTEGER) AS order_month_num,
+
+    TO_CHAR(o.purchase_ts, 'YYYY-MM') AS year_month,
+
+    -- Product info
+    i.product_id,
+
+    p.category_english AS product_category,
+
+    i.order_item_id_int AS item_sequence,
+
+    -- Financials
+    i.price_num AS item_price,
+
+    i.freight_value_num AS freight_value,
+
+    i.total_item_value,
+
+    -- Delivery performance
+    o.estimated_ts AS estimated_delivery,
+
+    o.delivered_ts AS actual_delivery,
+
+    CASE
+        WHEN o.delivered_ts IS NOT NULL
+         AND o.purchase_ts IS NOT NULL
+        THEN CAST(
+            EXTRACT(DAY FROM o.delivered_ts - o.purchase_ts)
+            AS INTEGER
+        )
+        ELSE NULL
+    END AS delivery_days,
+
+    CASE
+        WHEN o.delivered_ts > o.estimated_ts
+            THEN 'Late'
+
+        WHEN o.delivered_ts <= o.estimated_ts
+            THEN 'On Time'
+
+        ELSE 'Not Yet Delivered'
+    END AS delivery_status,
+
+    -- Review
+    CAST(r.review_score AS INTEGER) AS review_score,
+
+    -- Seller
+    i.seller_id,
+
+    s.seller_state
+
+FROM staging_orders o
+
+INNER JOIN staging_order_items i
+    ON o.order_id = i.order_id
+
+LEFT JOIN staging_products p
+    ON i.product_id = p.product_id
+
+LEFT JOIN staging_customers c
+    ON o.customer_id = c.customer_id
+
+LEFT JOIN staging_sellers s
+    ON i.seller_id = s.seller_id
+
+LEFT JOIN staging_order_reviews r
+    ON o.order_id = r.order_id;
 
   -- Verifikasi table master 
 SELECT COUNT(*) AS total_rows FROM clean_orders_master; 
 SELECT * FROM clean_orders_master LIMIT 5; 
 
+
+-- make new table
+CREATE TABLE payment_summary AS
+SELECT
+    order_id,
+    SUM(payment_value::numeric) AS total_payment,
+    MAX(payment_installments::int) AS installments,
+    STRING_AGG(DISTINCT payment_type, ', ') AS payment_types
+FROM staging_order_payments
+GROUP BY order_id;
 
   -- Ringkasan statistik dasar 
 SELECT 
