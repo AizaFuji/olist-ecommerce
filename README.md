@@ -97,39 +97,6 @@ Credit card dominates as the preferred payment method, often used with installme
 ![EDA Charts](output/figures/05_payment_methods.png)
 ---
 
-## ⚙️ Setup & Reproduction
-
-### Prerequisites
-- Python 3.9+
-- PostgreSQL
-- Kaggle account (to download the dataset)
-
-### Installation
-
-```bash
-git clone https://github.com/YOUR_USERNAME/olist-ecommerce-analytics.git
-cd olist-ecommerce-analytics
-pip install -r requirements.txt
-```
-
-### Environment Variables
-Copy `.env.example` to `.env` and fill in your PostgreSQL credentials:
-
-```env
-DB_USER=your_user
-DB_PASS=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=olist_db
-```
-
-### Run
-1. Download the dataset from [Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) and place CSVs in `data/raw/`
-2. Run SQL scripts in order: `01_import_schema.sql` → `02_cleaning.sql` → `03_analysis_queries.sql`
-3. Open and run `notebooks/01_eda.ipynb`
-
----
-
 ## 📄 Data Source
 
 > Olist. (2018). *Brazilian E-Commerce Public Dataset by Olist*. Kaggle.
@@ -141,5 +108,5 @@ Licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4
 
 ## 👤 Author
 
-**[Your Name]**
-[LinkedIn](https://linkedin.com/in/your-profile) · [Tableau Public](https://public.tableau.com/app/profile/your-profile) · [GitHub](https://github.com/YOUR_USERNAME)
+**[Aiza Fuji Sari]**
+[LinkedIn](https://www.linkedin.com/in/aiza-fuji-sari/) 
